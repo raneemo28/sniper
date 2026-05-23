@@ -32,6 +32,7 @@ export class ScoreSystem {
             this.add(SCORE.HIT_POINTS);
         });
         this.emitter.on('target:killed', () => {
+            this._hits++; // FIX: Account for the lethal hit
             this._kills++;
             this.add(SCORE.KILL_POINTS);
         });

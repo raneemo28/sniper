@@ -1,4 +1,3 @@
-
 import { EventEmitter }  from '../utils/EventEmitter';
 import { ScoreSnapshot } from '../systems/ScoreSystem';
 
@@ -9,12 +8,13 @@ export class UIScene {
   private elHighScore!: HTMLElement;
   private elWave!:      HTMLElement;
   private elAmmo!:      HTMLElement;
+  private elReload!:    HTMLElement;
   private elTimer!:     HTMLElement;
   private elCrosshair!: HTMLElement;
   private elScope!:     HTMLElement;
-  private elCountdown!: HTMLElement;
-  private elMessage!:   HTMLElement;
   private elGameOver!:  HTMLElement;
+  private elHitFlash!:  HTMLElement;
+  private elHealthBar!: HTMLElement; // Added for player health
 
   constructor(emitter: EventEmitter) {
     this.emitter = emitter;
@@ -31,190 +31,132 @@ export class UIScene {
       color: #eee;
       user-select: none;
     `);
+
+    // Top Left: Score and High Score
     const topLeft = this.createElement('div', '', `
       position: absolute; top: 20px; left: 24px;
       display: flex; flex-direction: column; gap: 4px;
     `);
-    this.elScore     = this.createElement('div', '', 'font-size:22px; font-weight:bold; letter-spacing:1px;');
+    this.elScore     = this.createElement('div', '', 'font-size:24px; font-weight:bold; color:#00ffff; text-shadow:0 0 10px #00ffff;');
     this.elHighScore = this.createElement('div', '', 'font-size:12px; opacity:0.6;');
     topLeft.append(this.elScore, this.elHighScore);
 
-    const topRight = this.createElement('div', '', `
-      position: absolute; top: 20px; right: 24px; text-align: right;
-      display: flex; flex-direction: column; gap: 4px;
+    // Bottom Left: Health Bar
+    const healthContainer = this.createElement('div', '', `
+      position: absolute; bottom: 40px; left: 24px;
+      width: 200px; height: 12px; border: 1px solid rgba(255,255,255,0.3);
+      background: rgba(0,0,0,0.5);
     `);
-    this.elWave  = this.createElement('div', '', 'font-size:16px; opacity:0.85;');
-    this.elTimer = this.createElement('div', '', 'font-size:14px; opacity:0.6;');
-    topRight.append(this.elWave, this.elTimer);
-
-    this.elAmmo = this.createElement('div', '', `
-      position: absolute; bottom: 30px; right: 24px;
-      font-size:18px; letter-spacing:2px; opacity:0.85;
+    this.elHealthBar = this.createElement('div', '', `
+      width: 100%; height: 100%; background: #ff3333;
+      transition: width 0.2s ease-out;
     `);
+    healthContainer.appendChild(this.elHealthBar);
 
-    this.elCrosshair = this.createElement('div', 'crosshair', `
-      position: absolute;
-      top: 50%; left: 50%;
-      transform: translate(-50%, -50%);
-      width: 16px; height: 16px;
+    // Bottom Right: Ammo and Reload
+    const bottomRight = this.createElement('div', '', `
+      position: absolute; bottom: 40px; right: 24px;
+      text-align: right;
     `);
-    this.elCrosshair.innerHTML = `
-      <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <line x1="8" y1="0"  x2="8"  y2="6"  stroke="rgba(255,255,255,0.8)" stroke-width="1"/>
-        <line x1="8" y1="10" x2="8"  y2="16" stroke="rgba(255,255,255,0.8)" stroke-width="1"/>
-        <line x1="0" y1="8"  x2="6"  y2="8"  stroke="rgba(255,255,255,0.8)" stroke-width="1"/>
-        <line x1="10" y1="8" x2="16" y2="8"  stroke="rgba(255,255,255,0.8)" stroke-width="1"/>
-        <circle cx="8" cy="8" r="1" fill="rgba(255,255,255,0.8)"/>
-      </svg>
-    `;
-
-    this.elScope = this.createElement('div', 'scope', `
-      position: absolute; inset: 0;
-      background: radial-gradient(ellipse at center, transparent 18%, rgba(0,0,0,0.97) 19%);
-      display: none;
-    `);
-
-    this.elCountdown = this.createElement('div', '', `
-      position: absolute;
-      top: 40%; left: 50%; transform: translate(-50%, -50%);
-      font-size: 72px; font-weight: bold; opacity: 0; text-align: center;
-      text-shadow: 0 2px 12px rgba(0,0,0,0.8);
+    this.elAmmo = this.createElement('div', '', 'font-size:32px; font-weight:bold;');
+    this.elReload = this.createElement('div', '', `
+      font-size:14px; color:#ffaa00; opacity:0; 
       transition: opacity 0.2s;
     `);
+    this.elReload.innerText = 'RELOADING...';
+    bottomRight.append(this.elReload, this.elAmmo);
 
-    this.elMessage = this.createElement('div', '', `
-      position: absolute;
-      top: 35%; left: 50%; transform: translate(-50%, -50%);
-      font-size: 28px; font-weight: bold; text-align: center;
-      opacity: 0; transition: opacity 0.3s;
-      text-shadow: 0 2px 8px rgba(0,0,0,0.9);
-    `);
-
-    this.elGameOver = this.createElement('div', 'gameover', `
+    // Hit Flash Overlay (Vision Blur/Red Shake)
+    this.elHitFlash = this.createElement('div', '', `
       position: absolute; inset: 0;
-      background: rgba(0,0,0,0.82);
-      display: none;
-      flex-direction: column;
-      align-items: center; justify-content: center; gap: 16px;
-      pointer-events: all;
+      background: radial-gradient(circle, transparent 40%, rgba(255,0,0,0.3) 100%);
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.1s;
+      backdrop-filter: blur(0px);
     `);
 
-    hud.append(
-      topLeft, topRight,
-      this.elAmmo,
-      this.elCrosshair,
-      this.elScope,
-      this.elCountdown,
-      this.elMessage,
-      this.elGameOver,
-    );
-    document.body.appendChild(hud);
+    // Game Over Overlay
+    this.elGameOver = this.createElement('div', 'game-over', `
+      position: absolute; inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; pointer-events: all;
+    `);
 
-    this.setScore({ score: 0, kills: 0, shots: 0, hits: 0, accuracy: 0, wave: 0, highScore: 0 });
-    this.setAmmo(10, 10);
+    hud.append(topLeft, healthContainer, bottomRight, this.elHitFlash, this.elGameOver);
+    document.body.appendChild(hud);
   }
 
   private subscribeToEvents(): void {
-    this.emitter.on('ui:scoreupdate', (snap: ScoreSnapshot) => {
-      this.setScore(snap);
+
+    this.emitter.on('ui:health', (data: { current: number, max: number }) => {
+    const percent = (data.current / data.max) * 100;
+    this.elHealthBar.style.width = `${percent}%`;
+    });
+    // Update Score
+    this.emitter.on('ui:score', (snap: ScoreSnapshot) => {
+      this.elScore.innerText = `SCORE: ${snap.score.toLocaleString()}`;
+      this.elHighScore.innerText = `BEST: ${snap.highScore.toLocaleString()}`;
+    });
+    
+    // Update Ammo
+    this.emitter.on('ui:ammo', ({ current, total }) => {
+      this.elAmmo.innerText = `${current} / ${total}`;
     });
 
-    this.emitter.on('ui:ammo', ({ current, max }: { current: number; max: number }) => {
-      this.setAmmo(current, max);
+    // Handle Reloading Visuals
+    this.emitter.on('ui:reload', (isReloading: boolean) => {
+      this.elReload.style.opacity = isReloading ? '1' : '0';
     });
 
-    this.emitter.on('ui:scope', (active: boolean) => {
-      this.elScope.style.display      = active ? 'block' : 'none';
-      this.elCrosshair.style.display  = active ? 'none'  : 'block';
+    // Player Hit Visuals (Blur & Shake)
+    this.emitter.on('ui:playerhit', (healthPercent: number) => {
+      this.elHealthBar.style.width = `${healthPercent}%`;
+      this.triggerHitEffect();
     });
 
-    this.emitter.on('wave:countdown:tick', (seconds: number) => {
-      this.elCountdown.textContent  = seconds > 0 ? String(seconds) : 'GO!';
-      this.elCountdown.style.opacity = '1';
-      if (seconds <= 0) {
-        setTimeout(() => { this.elCountdown.style.opacity = '0'; }, 600);
-      }
-    });
-
-    this.emitter.on('wave:start', ({ waveNumber }: { waveNumber: number }) => {
-      this.elWave.textContent = `Wave ${waveNumber}`;
-    });
-
-    this.emitter.on('wave:complete', () => {
-      this.flash('Wave complete!', '#88ffaa');
-    });
-
-    this.emitter.on('wave:failed', () => {
-      this.flash('Time\'s up!', '#ff6666');
-    });
-
-    this.emitter.on('ui:wavebonus', (bonus: number) => {
-      this.flash(`+${bonus} wave bonus`, '#ffdd66');
-    });
-
-    this.emitter.on('ui:timer', (seconds: number) => {
-      this.elTimer.textContent = `${Math.ceil(seconds)}s`;
-      this.elTimer.style.color = seconds < 10 ? '#ff6666' : '#eee';
-    });
-
+    // Game Over Logic
     this.emitter.on('ui:gameover', (snap: ScoreSnapshot) => {
       this.showGameOver(snap);
     });
-
-    this.emitter.on('game:reset', () => {
-      this.elGameOver.style.display = 'none';
-    });
   }
-
-  private setScore(snap: ScoreSnapshot): void {
-    this.elScore.textContent     = `Score  ${snap.score.toLocaleString()}`;
-    this.elHighScore.textContent = `Best   ${snap.highScore.toLocaleString()}`;
-  }
-
-  private setAmmo(current: number, max: number): void {
-    this.elAmmo.textContent = `${current} / ${max}`;
-  }
-
-  private flash(message: string, color = '#ffffff'): void {
-    this.elMessage.textContent    = message;
-    this.elMessage.style.color    = color;
-    this.elMessage.style.opacity  = '1';
-    setTimeout(() => { this.elMessage.style.opacity = '0'; }, 1800);
+    private triggerHitEffect(): void {
+    this.elHitFlash.style.opacity = '1';
+    this.elHitFlash.style.backdropFilter = 'blur(4px)';
+    
+    setTimeout(() => {
+      this.elHitFlash.style.opacity = '0';
+      this.elHitFlash.style.backdropFilter = 'blur(0px)';
+    }, 150);
   }
 
   private showGameOver(snap: ScoreSnapshot): void {
     this.elGameOver.innerHTML = `
-      <div style="font-size:42px;font-weight:bold;letter-spacing:2px">Game Over</div>
-      <div style="font-size:20px;opacity:0.8">Wave ${snap.wave} reached</div>
-      <div style="font-size:28px;font-weight:bold;margin-top:8px">
-        ${snap.score.toLocaleString()} pts
-      </div>
-      <div style="font-size:14px;opacity:0.6">
-        ${snap.kills} kills &nbsp;·&nbsp; ${snap.accuracy}% accuracy
-      </div>
-      <div style="font-size:14px;opacity:0.5;margin-top:4px">
-        Best: ${snap.highScore.toLocaleString()}
+      <h1 style="color:#ff3333; font-size:48px; margin-bottom:10px;">MISSION FAILED</h1>
+      <p style="font-size:20px; opacity:0.8;">Wave ${snap.wave} Overwhelmed You</p>
+      <div style="margin: 20px 0; padding: 20px; border-top: 1px solid #444; border-bottom: 1px solid #444;">
+        <div style="font-size:32px; color:#00ffff;">${snap.score.toLocaleString()} PTS</div>
+        <div style="font-size:14px; opacity:0.6; margin-top:8px;">
+          Kills: ${snap.kills} | Accuracy: ${snap.accuracy}%
+        </div>
       </div>
       <button id="restart-btn" style="
-        margin-top:24px; padding:12px 32px;
-        font-family: inherit; font-size:16px; letter-spacing:1px;
-        background: transparent; color: #eee;
-        border: 1px solid rgba(255,255,255,0.4);
-        cursor: pointer; pointer-events: all;
-      ">Play again</button>
+        padding: 12px 40px; background: transparent; color: white;
+        border: 1px solid #00ffff; cursor: pointer; font-family: inherit;
+        font-size: 18px; transition: all 0.2s;
+      ">RESTART MISSION</button>
     `;
+    
     this.elGameOver.style.display = 'flex';
 
     document.getElementById('restart-btn')?.addEventListener('click', () => {
+      this.elGameOver.style.display = 'none';
       this.emitter.emit('game:reset');
-    }, { once: true });
+    });
   }
 
-  private createElement(
-    tag: string,
-    id: string,
-    style: string,
-  ): HTMLElement {
+  private createElement(tag: string, id: string, style: string): HTMLElement {
     const el = document.createElement(tag);
     if (id) el.id = id;
     el.style.cssText = style;

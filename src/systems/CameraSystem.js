@@ -41,6 +41,9 @@ export class CameraSystem {
             targetOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), this.pitch);
             targetOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
             const targetPos = this.player.position.clone().add(targetOffset);
+            // FIX: Delta-time compensated lerping
+            const lerpFactor = 1 - Math.pow(0.001, delta);
+            this.camera.position.lerp(targetPos, lerpFactor);
             // Lerp camera position for a highly premium, cinematic damping feel
             this.camera.position.lerp(targetPos, 0.18);
             // Look at the player's mid-to-upper body

@@ -1,67 +1,103 @@
 import * as THREE from 'three';
+const MAG_SIZE = 5;
+const RELOAD_TIME_MS = 1800;
 export class RaycastSystem {
     camera;
     player;
     emitter;
     raycaster = new THREE.Raycaster();
-    targets = new Set();
     shouldFire = false;
+    ammo = MAG_SIZE;
+    reloading = false;
+    reloadTimeoutId = null;
     constructor(camera, player, emitter) {
         this.camera = camera;
         this.player = player;
         this.emitter = emitter;
         this.subscribeToEvents();
+        this.pushAmmoUI();
+    }
+    subscribeToEvents() {
+        // Listen for the fire command from InputHandler
+        this.emitter.on('input:fire', () => {
+            this.shouldFire = true;
+        });
+        // Listen for manual reload command (R Key)
+        this.emitter.on('input:reload', () => {
+            this.startReload();
+        });
     }
     update() {
         if (!this.shouldFire)
             return;
         this.shouldFire = false;
+        if (this.reloading)
+            return;
+        if (this.ammo <= 0) {
+            this.startReload();
+            return;
+        }
+        this.ammo--;
+        this.pushAmmoUI();
         this.castRay();
+    }
+    startReload() {
+        if (this.reloading || this.ammo === MAG_SIZE)
+            return;
+        this.reloading = true;
+        this.emitter.emit('ui:reload', true);
+        this.reloadTimeoutId = setTimeout(() => {
+            this.ammo = MAG_SIZE;
+            this.reloading = false;
+            this.emitter.emit('ui:reload', false);
+            this.pushAmmoUI();
+        }, RELOAD_TIME_MS);
     }
     castRay() {
         const origin = this.player.getShootingOrigin();
-        // Get camera's forward direction so shooting aligns perfectly with the crosshair/scope
-        const direction = new THREE.Vector3();
-        this.camera.getWorldDirection(direction);
-        // Perform raycast along the direction the camera is facing
-        this.raycaster.set(origin, direction);
-        const meshes = [...this.targets].map(t => t.mesh);
-        const hits = this.raycaster.intersectObjects(meshes, false);
-        if (hits.length === 0) {
-            // Trace bullet miss up to 100 meters
-            const missEnd = origin.clone().addScaledVector(direction, 100);
-            this.emitter.emit('shot:tracer', { origin, target: missEnd });
-            this.emitter.emit('shot:miss');
-            return;
-        }
-        const hitPoint = hits[0].point;
-        // Trace bullet hit
-        this.emitter.emit('shot:tracer', { origin, target: hitPoint });
-        const hitMesh = hits[0].object;
-        const hitTarget = [...this.targets].find(t => t.mesh === hitMesh);
-        if (!hitTarget)
-            return;
-        const killed = hitTarget.hit();
-        if (killed) {
-            this.emitter.emit('target:killed', hitTarget);
-        }
-        else {
-            this.emitter.emit('target:hit', hitTarget);
-        }
-        this.emitter.emit('shot:hit', hitPoint);
+        // 1. Raycast from camera center to find what the player is looking at
+        this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+        // We only want to check against Enemy meshes
+        // In a real scenario, you'd pass a list of enemy meshes here
+        this.emitter.emit('raycast:request_targets', (targets) => {
+            const intersects = this.raycaster.intersectObjects(targets, true);
+            let hitPoint;
+            if (intersects.length > 0) {
+                const hit = intersects[0];
+                hitPoint = hit.point;
+                // Find the Enemy instance associated with this mesh
+                // This assumes enemies store their instance reference in userData
+                const enemyInstance = hit.object.userData.instance;
+                if (enemyInstance) {
+                    enemyInstance.takeDamage(1); // Multi-hit logic
+                    this.emitter.emit('shot:hit');
+                }
+            }
+            else {
+                // If nothing hit, the tracer goes 100 units into the distance
+                hitPoint = this.raycaster.ray.at(100, new THREE.Vector3());
+                this.emitter.emit('shot:miss');
+            }
+            // 2. Create the Neon Cyan Tracer effect
+            // This calls createTracer in GameScene.ts
+            this.emitter.emit('visual:tracer', {
+                origin: origin,
+                target: hitPoint,
+                color: 0x00ffff // Neon Cyan
+            });
+        });
     }
-    subscribeToEvents() {
-        this.emitter.on('input:fire', () => {
-            this.shouldFire = true;
+    pushAmmoUI() {
+        this.emitter.emit('ui:ammo', {
+            current: this.ammo,
+            total: MAG_SIZE
         });
-        this.emitter.on('target:spawned', (target) => {
-            this.targets.add(target);
-        });
-        this.emitter.on('target:killed', (target) => {
-            this.targets.delete(target);
-        });
-        this.emitter.on('game:reset', () => {
-            this.targets.clear();
-        });
+    }
+    reset() {
+        this.ammo = MAG_SIZE;
+        this.reloading = false;
+        if (this.reloadTimeoutId)
+            clearTimeout(this.reloadTimeoutId);
+        this.pushAmmoUI();
     }
 }
