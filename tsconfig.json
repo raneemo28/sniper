@@ -1,5 +1,6 @@
 {
  "compilerOptions": {
+	"forceConsistentCasingInFileNames": true,
  "target": "ESNext"
 ,
  "module": "ESNext"
@@ -9,6 +10,6 @@
  "strict": true,
  "jsx": "preserve"
 ,
- "types": ["vite/client"]
+ "types": []
  }
  }

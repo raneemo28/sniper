@@ -11,10 +11,19 @@ export class CameraSystem {
     currentFOV = CAMERA.FOV_DEFAULT;
     orbitActive = false;
     orbitControls = null;
+    // FIX BUG 5: Camera shake state
+    shakeIntensity = 0;
+    shakeDuration = 0;
     constructor(camera, player, emitter) {
         this.camera = camera;
         this.player = player;
         this.subscribeToEvents(emitter);
+    }
+
+    /** Trigger a screen shake of given intensity for 0.3 seconds */
+    triggerShake(intensity = 0.15) {
+        this.shakeIntensity = intensity;
+        this.shakeDuration = 0.3;
     }
     get cameraYaw() {
         return this.yaw;
@@ -36,19 +45,25 @@ export class CameraSystem {
         }
         else {
             // Third-person smooth follow camera centered around player
-            const targetOffset = new THREE.Vector3(0, 2.0, 5.0); // 5m back, 2m high
-            // Apply vertical tilt (pitch) and horizontal rotation (yaw) to the offset
+            const targetOffset = new THREE.Vector3(0, 2.0, 5.0);
             targetOffset.applyAxisAngle(new THREE.Vector3(1, 0, 0), this.pitch);
             targetOffset.applyAxisAngle(new THREE.Vector3(0, 1, 0), this.yaw);
             const targetPos = this.player.position.clone().add(targetOffset);
-            // FIX: Delta-time compensated lerping
-            const lerpFactor = 1 - Math.pow(0.001, delta);
-            this.camera.position.lerp(targetPos, lerpFactor);
-            // Lerp camera position for a highly premium, cinematic damping feel
             this.camera.position.lerp(targetPos, 0.18);
             // Look at the player's mid-to-upper body
             const lookAtTarget = this.player.position.clone().add(new THREE.Vector3(0, 1.3, 0));
             this.camera.lookAt(lookAtTarget);
+        }
+
+        // FIX BUG 5: Apply decaying camera shake offset
+        if (this.shakeDuration > 0) {
+            this.shakeDuration -= delta;
+            const s = this.shakeIntensity * (this.shakeDuration / 0.3);
+            this.camera.position.x += (Math.random() - 0.5) * s;
+            this.camera.position.y += (Math.random() - 0.5) * s;
+            if (this.shakeDuration <= 0) {
+                this.shakeIntensity = 0;
+            }
         }
     }
     subscribeToEvents(emitter) {

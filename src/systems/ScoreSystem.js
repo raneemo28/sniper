@@ -77,6 +77,7 @@ export class ScoreSystem {
     }
     /** Tell UIScene to re-render the HUD with fresh numbers */
     pushUI() {
-        this.emitter.emit('ui:scoreupdate', this.snapshot());
+        // FIX BUG 4: UIScene listens to 'ui:score', not 'ui:scoreupdate'
+        this.emitter.emit('ui:score', this.snapshot());
     }
 }

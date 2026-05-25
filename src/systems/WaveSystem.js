@@ -43,10 +43,24 @@ export class WaveSystem {
             this.cleanup();
             this.state = 'idle';
         });
-        // When a target is killed, remove it from our tracking list
-        this.emitter.on('target:killed', (data) => {
-            // Logic to remove enemy from array would go here if using instance tracking
-            // For now, we check the length in the update loop
+
+        // FIX BUG 3: Respond to raycast system's request for target meshes.
+        // Collect all child meshes of every live enemy and pass them to the callback.
+        this.emitter.on('raycast:request_targets', (callback) => {
+            if (typeof callback !== 'function') return;
+            const meshes = [];
+            for (const enemy of this.enemies) {
+                if (enemy.isDead || !enemy.mesh) continue;
+                // Traverse ALL child meshes inside the GLB group so raycasts hit them
+                enemy.mesh.traverse((child) => {
+                    if (child.isMesh) {
+                        // Ensure every child can trace back to the Enemy instance
+                        child.userData.instance = enemy;
+                        meshes.push(child);
+                    }
+                });
+            }
+            callback(meshes);
         });
     }
     nextWave() {

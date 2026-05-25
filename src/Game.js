@@ -8,6 +8,7 @@ import { InputHandler } from './systems/InputHandler';
 import { GameScene } from './scenes/GameScene';
 import { Player } from './components/Player';
 import { UIScene } from './scenes/UIScene';
+
 export class Game {
     renderer;
     clock;
@@ -21,86 +22,109 @@ export class Game {
     scoreSystem;
     cameraSystem;
     uiScene;
-    MAX_HEALTH = 10;
+
+    // FIX BUG 7: Match player's actual starting health
+    MAX_HEALTH = 100;
+
     constructor() {
         this.renderer = new THREE.WebGLRenderer({ antialias: true });
         this.renderer.setSize(window.innerWidth, window.innerHeight);
         this.renderer.shadowMap.enabled = true;
         this.renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(this.renderer.domElement);
+
         this.clock = new THREE.Clock();
         this.emitter = new EventEmitter();
+
         // 1. Build scene
         this.gameScene = new GameScene();
+
         // 2. Instantiate Player (other systems depend on this instance)
         this.player = new Player(this.gameScene.scene, this.emitter);
+
         // 3. Instantiate Systems
         this.inputHandler = new InputHandler(this.emitter);
         this.cameraSystem = new CameraSystem(this.gameScene.camera, this.player, this.emitter);
-        // FIX: Correct argument order (Scene, Position, Emitter)
         this.waveSystem = new WaveSystem(this.gameScene.scene, this.player.position, this.emitter);
         this.raycastSystem = new RaycastSystem(this.gameScene.camera, this.player, this.emitter);
         this.scoreSystem = new ScoreSystem(this.emitter);
         this.uiScene = new UIScene(this.emitter);
+
         this.setupEventListeners();
         window.addEventListener('resize', () => this.onResize());
     }
+
     setupEventListeners() {
-        // Player Combat Logic
+        // FIX BUG 1: Read data.amount (what Enemy actually sends), not data.damage
         this.emitter.on('player:hit', (data) => {
-            const damage = data?.damage || 1;
+            const damage = data?.amount || 1;
             this.player.takeDamage(damage);
-            const healthPct = (this.player.health / 100) * 100;
+            const healthPct = (this.player.health / this.MAX_HEALTH) * 100;
+            // Trigger the HUD health bar + blur
             this.emitter.emit('ui:playerhit', healthPct);
+            // Also update the standard health bar
+            this.emitter.emit('ui:health', { current: this.player.health, max: this.MAX_HEALTH });
             if (this.player.health <= 0) {
                 this.onGameOver();
             }
         });
-        // Wire bullet tracer trails (player shots — Neon Cyan)
+
+        // Wire bullet tracer trails
         this.emitter.on('visual:tracer', ({ origin, target, color }) => {
             this.gameScene.createTracer(origin, target, color);
         });
-        // Wire game-over events
-        this.emitter.on('ui:gameover', () => this.onGameOver());
-        // Wire game-reset: restart game loop, reset player and waves
+
+        // FIX BUG 5: Wire camera:shake to CameraSystem
+        this.emitter.on('camera:shake', (intensity) => {
+            this.cameraSystem.triggerShake(intensity || 0.15);
+        });
+
+        // FIX BUG 2: Wire game-over properly — listen once and emit to UI with snapshot
+        this.emitter.on('ui:gameover', () => {
+            this.onGameOver();
+        });
+
+        // Wire game-reset
         this.emitter.on('game:reset', () => {
             this.resetGame();
         });
     }
+
     start() {
         this.emitter.emit('game:start');
         this.renderer.setAnimationLoop(() => this.tick());
     }
+
     resetGame() {
         this.clock.getDelta();
         this.player.health = this.MAX_HEALTH;
-        // Reset all sub-systems
         this.player.reset();
-        this.waveSystem.reset(); // Requires the reset() method added to WaveSystem
+        this.waveSystem.reset();
         this.raycastSystem.reset();
-        // Start fresh
+        this.emitter.emit('ui:health', { current: this.MAX_HEALTH, max: this.MAX_HEALTH });
         this.emitter.emit('game:start');
         this.renderer.setAnimationLoop(() => this.tick());
     }
+
     tick() {
         const delta = this.clock.getDelta();
-        // Update all systems in logical order
         this.inputHandler.update();
         this.player.update(delta, this.cameraSystem.cameraYaw);
         this.waveSystem.update(delta);
         this.raycastSystem.update();
         this.cameraSystem.update(delta);
-        // Render frame
         this.renderer.render(this.gameScene.scene, this.gameScene.camera);
     }
+
     onGameOver() {
         // Stop the loop
         this.renderer.setAnimationLoop(null);
-        // Show the Game Over screen via UI System
-        this.emitter.on('ui:gameover', () => {
-            this.onGameOver();
-        });
+
+        // FIX BUG 2: Collect score snapshot and pass it to UIScene
+        const snap = this.scoreSystem.snapshot();
+        this.uiScene.showGameOver(snap);
     }
+
     onResize() {
         const { innerWidth: w, innerHeight: h } = window;
         this.gameScene.camera.aspect = w / h;

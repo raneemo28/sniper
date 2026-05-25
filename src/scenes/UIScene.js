@@ -10,7 +10,7 @@ export class UIScene {
     elScope;
     elGameOver;
     elHitFlash;
-    elHealthBar; // Added for player health
+    elHealthBar;
     constructor(emitter) {
         this.emitter = emitter;
         this.buildHUD();
@@ -25,14 +25,16 @@ export class UIScene {
       color: #eee;
       user-select: none;
     `);
-        // Top Left: Score and High Score
+        // Top Left: Score, High Score, Wave
         const topLeft = this.createElement('div', '', `
       position: absolute; top: 20px; left: 24px;
       display: flex; flex-direction: column; gap: 4px;
     `);
         this.elScore = this.createElement('div', '', 'font-size:24px; font-weight:bold; color:#00ffff; text-shadow:0 0 10px #00ffff;');
         this.elHighScore = this.createElement('div', '', 'font-size:12px; opacity:0.6;');
-        topLeft.append(this.elScore, this.elHighScore);
+        this.elWave = this.createElement('div', '', 'font-size:14px; color:#ffaa44; margin-top:4px;');
+        this.elWave.innerText = 'WAVE 1';
+        topLeft.append(this.elScore, this.elHighScore, this.elWave);
         // Bottom Left: Health Bar
         const healthContainer = this.createElement('div', '', `
       position: absolute; bottom: 40px; left: 24px;
@@ -85,6 +87,10 @@ export class UIScene {
             this.elScore.innerText = `SCORE: ${snap.score.toLocaleString()}`;
             this.elHighScore.innerText = `BEST: ${snap.highScore.toLocaleString()}`;
         });
+        // Update Wave display
+        this.emitter.on('wave:start', ({ waveNumber }) => {
+            if (this.elWave) this.elWave.innerText = `WAVE ${waveNumber}`;
+        });
         // Update Ammo
         this.emitter.on('ui:ammo', ({ current, total }) => {
             this.elAmmo.innerText = `${current} / ${total}`;
@@ -98,10 +104,12 @@ export class UIScene {
             this.elHealthBar.style.width = `${healthPercent}%`;
             this.triggerHitEffect();
         });
-        // Game Over Logic
-        this.emitter.on('ui:gameover', (snap) => {
-            this.showGameOver(snap);
+        // FIX BUG 6: Also listen to 'ui:hitblur' — emitted directly by Enemy.shootAtPlayer()
+        this.emitter.on('ui:hitblur', () => {
+            this.triggerHitEffect();
         });
+        // Game Over Logic — ui:gameover is now called directly from Game.onGameOver()
+        // via uiScene.showGameOver(snap), so no need to listen here.
     }
     triggerHitEffect() {
         this.elHitFlash.style.opacity = '1';
@@ -112,19 +120,28 @@ export class UIScene {
         }, 150);
     }
     showGameOver(snap) {
+        // FIX BUG 2: Handle missing/partial snap with safe defaults
+        const safeSnap = {
+            wave: snap?.wave ?? 1,
+            score: snap?.score ?? 0,
+            kills: snap?.kills ?? 0,
+            accuracy: snap?.accuracy ?? 0,
+            highScore: snap?.highScore ?? 0,
+        };
         this.elGameOver.innerHTML = `
-      <h1 style="color:#ff3333; font-size:48px; margin-bottom:10px;">MISSION FAILED</h1>
-      <p style="font-size:20px; opacity:0.8;">Wave ${snap.wave} Overwhelmed You</p>
+      <h1 style="color:#ff3333; font-size:48px; margin-bottom:10px; text-shadow: 0 0 30px #ff0000;">MISSION FAILED</h1>
+      <p style="font-size:20px; opacity:0.8;">Wave ${safeSnap.wave} Overwhelmed You</p>
       <div style="margin: 20px 0; padding: 20px; border-top: 1px solid #444; border-bottom: 1px solid #444;">
-        <div style="font-size:32px; color:#00ffff;">${snap.score.toLocaleString()} PTS</div>
+        <div style="font-size:32px; color:#00ffff; text-shadow: 0 0 15px #00ffff;">${safeSnap.score.toLocaleString()} PTS</div>
         <div style="font-size:14px; opacity:0.6; margin-top:8px;">
-          Kills: ${snap.kills} | Accuracy: ${snap.accuracy}%
+          Kills: ${safeSnap.kills} | Accuracy: ${safeSnap.accuracy}%
         </div>
+        <div style="font-size:12px; opacity:0.4; margin-top:4px;">Best: ${safeSnap.highScore.toLocaleString()}</div>
       </div>
       <button id="restart-btn" style="
         padding: 12px 40px; background: transparent; color: white;
         border: 1px solid #00ffff; cursor: pointer; font-family: inherit;
-        font-size: 18px; transition: all 0.2s;
+        font-size: 18px; transition: all 0.2s; letter-spacing: 2px;
       ">RESTART MISSION</button>
     `;
         this.elGameOver.style.display = 'flex';
