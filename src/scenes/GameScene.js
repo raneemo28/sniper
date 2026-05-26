@@ -70,15 +70,15 @@ export class GameScene {
                 x = offset;
                 z = lateral;
             }
-            if (side === 1) {
+            else if (side === 1) {
                 x = -offset;
                 z = lateral;
             }
-            if (side === 2) {
+            else if (side === 2) {
                 x = lateral;
                 z = offset;
             }
-            if (side === 3) {
+            else if (side === 3) {
                 x = lateral;
                 z = -offset;
             }
@@ -109,14 +109,14 @@ export class GameScene {
                     win.position.set(-w / 2 - 0.01, wy, wx);
                     win.rotation.y = Math.PI / 2;
                 }
-                if (side === 1) {
+                else if (side === 1) {
                     win.position.set(w / 2 + 0.01, wy, wx);
                     win.rotation.y = -Math.PI / 2;
                 }
-                if (side === 2) {
+                else if (side === 2) {
                     win.position.set(wx, wy, -d / 2 - 0.01);
                 }
-                if (side === 3) {
+                else if (side === 3) {
                     win.position.set(wx, wy, d / 2 + 0.01);
                     win.rotation.y = Math.PI;
                 }
@@ -133,11 +133,9 @@ export class GameScene {
             const r = rng - 2;
             const x = Math.cos(angle) * r;
             const z = Math.sin(angle) * r;
-            // Pole
             const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.07, 3.5, 8), poleMat);
             pole.position.set(x, 1.75, z);
             this.scene.add(pole);
-            // Lamp head
             const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 8, 8), new THREE.MeshStandardMaterial({
                 color: 0xffeeaa,
                 emissive: 0xffeeaa,
@@ -156,21 +154,23 @@ export class GameScene {
         this.camera.position.set(0, PLAYER.HEIGHT, 0);
         this.camera.rotation.order = 'YXZ';
     }
-    createTracer(origin, target) {
+    createTracer(origin, target, color = 0x00ffcc) {
         const points = [origin, target];
         const geom = new THREE.BufferGeometry().setFromPoints(points);
         const mat = new THREE.LineBasicMaterial({
-            color: 0x00ffcc, // Neon cyan/teal
+            color,
             transparent: true,
             opacity: 1.0,
-            blending: THREE.AdditiveBlending // Glow effect
+            blending: THREE.AdditiveBlending,
         });
         const line = new THREE.Line(geom, mat);
         this.scene.add(line);
-        // Smooth fade out
-        let duration = 0.12; // 120ms tracer lifetime
-        const tickFade = () => {
-            duration -= 0.016; // roughly 60fps frame delta
+        let duration = 0.12;
+        let lastTime = performance.now();
+        const tickFade = (currentTime) => {
+            const dt = (currentTime - lastTime) / 1000;
+            lastTime = currentTime;
+            duration -= dt;
             if (duration <= 0) {
                 this.scene.remove(line);
                 geom.dispose();
@@ -181,6 +181,6 @@ export class GameScene {
                 requestAnimationFrame(tickFade);
             }
         };
-        tickFade();
+        requestAnimationFrame(tickFade);
     }
 }
