@@ -8,6 +8,7 @@ import { InputHandler } from './systems/InputHandler';
 import { GameScene }    from './scenes/GameScene';
 import { Player }       from './components/Player';
 import { UIScene }      from './scenes/UIScene';
+import { AudioSystem } from './systems/AudioSystem';
 
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -23,8 +24,9 @@ export class Game {
   private scoreSystem: ScoreSystem;
   private cameraSystem: CameraSystem;
   private uiScene: UIScene;
-  
-  private readonly MAX_HEALTH = 10;
+  private audioSystem: AudioSystem;
+  private gameOver = false;
+  private readonly MAX_HEALTH = 100;
 
   constructor() {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -50,6 +52,7 @@ export class Game {
     this.waveSystem    = new WaveSystem(this.gameScene.scene, this.player.position, this.emitter);
 
     this.raycastSystem = new RaycastSystem(this.gameScene.camera, this.player, this.emitter);
+    this.audioSystem = new AudioSystem(this.gameScene.camera, this.emitter);
     this.scoreSystem   = new ScoreSystem(this.emitter);
     this.uiScene       = new UIScene(this.emitter);
 
@@ -60,13 +63,13 @@ export class Game {
 
   private setupEventListeners(): void {
     // Player Combat Logic
-    this.emitter.on('player:hit', (data: { damage: number }) => {
-      const damage = data?.damage || 1;
+    this.emitter.on('player:hit', (data: { amount?: number; damage?: number }) => {
+      const damage = data?.amount ?? data?.damage ?? 1;
       this.player.takeDamage(damage);
-      const healthPct = (this.player.health/100 )*100;
+      const healthPct = (this.player.health / this.MAX_HEALTH) * 100;
       this.emitter.emit('ui:playerhit', healthPct);
       
-      if (this.player.health<= 0) {
+      if (this.player.health <= 0) {
         this.onGameOver();
       }
     });
@@ -91,6 +94,7 @@ export class Game {
   }
 
   private resetGame(): void {
+    this.gameOver = false;
     this.clock.getDelta(); 
     this.player.health = this.MAX_HEALTH; 
     
@@ -98,6 +102,7 @@ export class Game {
     this.player.reset();
     this.waveSystem.reset(); // Requires the reset() method added to WaveSystem
     this.raycastSystem.reset();
+    this.emitter.emit('ui:health', { current: this.MAX_HEALTH, max: this.MAX_HEALTH });
     
     // Start fresh
     this.emitter.emit('game:start');
@@ -105,6 +110,8 @@ export class Game {
   }
 
   private tick(): void {
+    if (this.gameOver) return;
+
     const delta = this.clock.getDelta();
 
     // Update all systems in logical order
@@ -119,13 +126,13 @@ export class Game {
   }
 
   private onGameOver(): void {
+    if (this.gameOver) return;
+    this.gameOver = true;
+
     // Stop the loop
     this.renderer.setAnimationLoop(null);
-    
-    // Show the Game Over screen via UI System
-    this.emitter.on('ui:gameover', () => {
-    this.onGameOver();
-});
+
+    this.uiScene.showGameOver(this.scoreSystem.snapshot());
   }
 
   private onResize(): void {

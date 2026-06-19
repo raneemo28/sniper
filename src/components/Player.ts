@@ -1,6 +1,6 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import { EventEmitter } from '../utils/EventEmitter';
-import { loadModel } from '../utils/loader'; //
 
 export class Player {
   mesh: THREE.Group | null = null;
@@ -11,6 +11,7 @@ export class Player {
   private mixer: THREE.AnimationMixer | null = null;
   private walkAction: THREE.AnimationAction | null = null;
   private keys: Record<string, boolean> = {};
+  private wasMoving = false;
   
   // Stats & Combat
   public health = 100;
@@ -22,35 +23,51 @@ export class Player {
   constructor(scene: THREE.Scene, emitter: EventEmitter) {
     this.scene = scene;
     this.emitter = emitter;
-    this.init();
-
+    this.loadModel();
+    
     // Subscribe to keyboard inputs from the InputHandler
     this.emitter.on('input:keys', (keys: Record<string, boolean>) => {
       this.keys = keys;
     });
   }
 
-  private async init(): Promise<void> {
-    try {
-      // Use your custom loader utility
-      this.mesh = await loadModel('/src/models/CesiumMan.glb');
-      
-      this.mesh.scale.set(this.scale, this.scale, this.scale);
-      this.mesh.position.copy(this.position);
-      
-      // Rotate the model by 180 degrees initially so he faces forward
-      this.mesh.rotation.y = Math.PI;
+  private loadModel(): void {
+    const loader = new GLTFLoader();
+    loader.load(
+      '/src/models/CesiumMan.glb',
+      (gltf) => {
+        this.mesh = gltf.scene;
+        this.mesh.scale.set(this.scale, this.scale, this.scale);
+        this.mesh.position.copy(this.position);
+        
+        // Enable shadows for the character
+        this.mesh.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
 
-      this.scene.add(this.mesh);
+        // Rotate the model by 180 degrees initially so he faces forward
+        this.mesh.rotation.y = Math.PI;
 
-      // Setup animations (CesiumMan usually has animations at index 0)
-      // Note: loadModel returns the scene, but we can access animations if we 
-      // adjust loader.ts or handle the mixer if the GLTF object was stored.
-      // Since your loader.ts currently only returns the Group, we assume 
-      // standard mesh animations for now.
-    } catch (error) {
-      console.error('[Player] Failed to load via loader utility:', error);
-    }
+        this.scene.add(this.mesh);
+        console.log('[Player] Loaded animations:', gltf.animations);
+
+        // Setup walking animations using the mixer
+        if (gltf.animations && gltf.animations.length > 0) {
+          this.mixer = new THREE.AnimationMixer(this.mesh);
+          this.walkAction = this.mixer.clipAction(gltf.animations[0]);
+          this.walkAction.timeScale = 1.35;
+          this.walkAction.play();
+          this.walkAction.paused = true; // Start in standing/idle state
+        }
+      },
+      undefined,
+      (error) => {
+        console.error('[Player] Failed to load model:', error);
+      }
+    );
   }
 
   update(delta: number, cameraYaw: number): void {
@@ -67,6 +84,7 @@ export class Player {
     if (this.keys['KeyA'] || this.keys['ArrowLeft']) moveDirection.add(right.clone().negate());
 
     const isMoving = moveDirection.lengthSq() > 0;
+    this.setMoving(isMoving);
 
     if (isMoving) {
       moveDirection.normalize();
@@ -78,14 +96,27 @@ export class Player {
       
       this.mesh.position.copy(this.position);
 
-      // Smooth turning
+      // Smooth turning adjustment
       const targetAngle = Math.atan2(moveDirection.x, moveDirection.z);
       let diff = targetAngle - this.mesh.rotation.y;
       diff = Math.atan2(Math.sin(diff), Math.cos(diff));
       this.mesh.rotation.y += diff * 12 * delta;
+      
+      // FIX: Clean, direct unpausing sequence
+      if (this.walkAction) {
+        this.walkAction.paused = false;
+      }
+    } else {
+      // Stand still completely
+      if (this.walkAction) {
+        this.walkAction.paused = true;
+      }
     }
 
-    if (this.mixer) this.mixer.update(delta);
+    // Unconditionally advance the animation mixer frame
+    if (this.mixer) {
+      this.mixer.update(delta);
+    }
   }
 
   takeDamage(amount: number): void {
@@ -96,20 +127,39 @@ export class Player {
   }
 
   getShootingOrigin(): THREE.Vector3 {
-    // Shoulder/chest height of the scaled character
     return this.position.clone().add(new THREE.Vector3(0, 1.4, 0));
   }
 
   reset(): void {
     this.health = this.maxHealth;
     this.position.set(0, 0, 0);
+    this.setMoving(false);
     if (this.mesh) {
       this.mesh.position.copy(this.position);
       this.mesh.rotation.y = Math.PI;
     }
+    if (this.walkAction) {
+      this.walkAction.stop();
+      this.walkAction.play();
+      this.walkAction.paused = true;
+    }
+  }
+
+  getFacingDirection(): THREE.Vector3 {
+    if (!this.mesh) return new THREE.Vector3(0, 0, -1);
+    const localFront = new THREE.Vector3(0, 0, 1);
+    return localFront.applyQuaternion(this.mesh.quaternion).normalize();
   }
 
   destroy(): void {
+    this.setMoving(false);
     if (this.mesh) this.scene.remove(this.mesh);
+  }
+
+  private setMoving(isMoving: boolean): void {
+    if (this.wasMoving === isMoving) return;
+
+    this.wasMoving = isMoving;
+    this.emitter.emit('player:moving', isMoving);
   }
 }

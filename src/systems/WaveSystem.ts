@@ -16,15 +16,15 @@ export interface WaveConfig {
  * targetSpeed and targetHealth are passed to the Enemy class.
  */
 function buildWaveConfig(waveNumber: number): WaveConfig {
+  const difficulty = Math.max(0, waveNumber - 1);
+
   return {
     waveNumber,
-    targetCount: 3 + waveNumber * 2,
-    // "Runner" speeds: starts fast and gets faster
-    targetSpeed: 4.0 + waveNumber * 0.5, 
-    // Multi-hit health: starts at 2 hits, increases every 3 waves
-    targetHealth: 2 + Math.floor(waveNumber / 3),
-    spawnIntervalMs: Math.max(400, 1200 - waveNumber * 100),
-    timeLimitSec: 40 + waveNumber * 5,
+    targetCount: 3 + difficulty * 2,
+    targetSpeed: 1.8 + difficulty * 0.35,
+    targetHealth: 1 + Math.floor(difficulty / 3),
+    spawnIntervalMs: Math.max(550, 1800 - difficulty * 120),
+    timeLimitSec: 50 + difficulty * 5,
   };
 }
 
@@ -44,6 +44,7 @@ export class WaveSystem {
   private spawnTimer: number = 0;
   private waveTimer: number = 0;
   private countdownTimer: number = 0;
+  private nextWaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private readonly COUNTDOWN_SEC = 3;
 
   constructor(scene: THREE.Scene, playerPos: THREE.Vector3, emitter: EventEmitter) {
@@ -61,6 +62,18 @@ export class WaveSystem {
       this.currentWave = 0;
       this.cleanup();
       this.state = 'idle';
+      this.clearNextWaveTimeout();
+      this.emitter.emit('ui:wave', 0);
+      this.emitter.emit('ui:timer', 0);
+    });
+
+    this.emitter.on('ui:gameover', () => {
+      this.state = 'failed';
+      this.clearNextWaveTimeout();
+    });
+
+    this.emitter.on('raycast:request_targets', (callback: (targets: THREE.Object3D[]) => void) => {
+      callback(this.enemies.flatMap((enemy) => enemy.getRaycastTargets()));
     });
 
     // When a target is killed, remove it from our tracking list
@@ -71,6 +84,7 @@ export class WaveSystem {
   }
 
   public nextWave(): void {
+    this.clearNextWaveTimeout();
     this.currentWave++;
     this.config = buildWaveConfig(this.currentWave);
     this.state = 'countdown';
@@ -80,6 +94,8 @@ export class WaveSystem {
       waveNumber: this.currentWave, 
       config: this.config 
     });
+    this.emitter.emit('ui:wave', this.currentWave);
+    this.emitter.emit('ui:timer', this.COUNTDOWN_SEC);
   }
 
   update(delta: number): void {
@@ -111,6 +127,9 @@ export class WaveSystem {
 
   private tickCountdown(delta: number): void {
     this.countdownTimer += delta;
+    const remaining = Math.max(0, Math.ceil(this.COUNTDOWN_SEC - this.countdownTimer));
+    this.emitter.emit('ui:timer', remaining);
+    this.emitter.emit('ui:countdown', remaining);
     if (this.countdownTimer >= this.COUNTDOWN_SEC) {
       this.beginSpawning();
     }
@@ -122,9 +141,17 @@ export class WaveSystem {
     this.spawnQueue = this.config.targetCount;
     this.spawnTimer = 0;
     this.waveTimer = 0;
+    this.emitter.emit('ui:countdown-go');
+    this.emitter.emit('ui:timer', this.config.timeLimitSec);
+    setTimeout(() => this.emitter.emit('ui:countdown-hide'), 850);
   }
 
   private tickSpawning(delta: number): void {
+    this.waveTimer += delta;
+    if (this.config) {
+      this.emitter.emit('ui:timer', Math.max(0, this.config.timeLimitSec - this.waveTimer));
+    }
+
     this.spawnTimer += delta * 1000; // to ms
     if (this.config && this.spawnQueue > 0 && this.spawnTimer >= this.config.spawnIntervalMs) {
       this.spawnTarget();
@@ -139,6 +166,9 @@ export class WaveSystem {
 
   private tickActive(delta: number): void {
     this.waveTimer += delta;
+    if (this.config) {
+      this.emitter.emit('ui:timer', Math.max(0, this.config.timeLimitSec - this.waveTimer));
+    }
 
     // Check for win condition: all enemies cleared
     if (this.enemies.length === 0 && this.spawnQueue <= 0) {
@@ -146,7 +176,7 @@ export class WaveSystem {
       this.emitter.emit('wave:complete', { waveNumber: this.currentWave });
       
       // Auto-start next wave after a delay
-      setTimeout(() => this.nextWave(), 3000);
+      this.nextWaveTimeoutId = setTimeout(() => this.nextWave(), 3000);
     }
 
     // Check for fail condition: time limit
@@ -185,11 +215,20 @@ export class WaveSystem {
     this.enemies.forEach(e => e.destroy());
     this.enemies = [];
   }
+
+  private clearNextWaveTimeout(): void {
+    if (this.nextWaveTimeoutId) {
+      clearTimeout(this.nextWaveTimeoutId);
+      this.nextWaveTimeoutId = null;
+    }
+  }
+
   public reset(): void {
   this.currentWave = 0;
   this.state = 'idle';
   this.spawnQueue = 0;
   this.waveTimer = 0;
+  this.clearNextWaveTimeout();
   this.cleanup(); // Deletes all mesh objects from the scene
   }
 }

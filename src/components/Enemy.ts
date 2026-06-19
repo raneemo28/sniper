@@ -26,8 +26,9 @@ export class Enemy {
   // Health Bar UI
   private healthBarBackground: THREE.Mesh | null = null;
   private healthBarForeground: THREE.Mesh | null = null;
+  private hitbox: THREE.Mesh | null = null;
 
-  constructor(scene: THREE.Scene, startPos: THREE.Vector3, playerPos: THREE.Vector3, emitter: EventEmitter, health = 3, speed = 4.0) {
+  constructor(scene: THREE.Scene, startPos: THREE.Vector3, playerPos: THREE.Vector3, emitter: EventEmitter, health = 5, speed = 4.0) {
     this.scene = scene;
     this.emitter = emitter;
     this.position = startPos;
@@ -45,10 +46,30 @@ export class Enemy {
   this.mesh.position.copy(this.position);
   
   this.mesh.userData.instance = this; 
+  this.mesh.traverse((child) => {
+    child.userData.instance = this;
+  });
 
   this.scene.add(this.mesh);
+  this.createHitbox();
   this.createHealthBar();
 }
+
+  private createHitbox() {
+    if (!this.mesh) return;
+
+    const geometry = new THREE.BoxGeometry(1.5, 2.4, 1.5);
+    const material = new THREE.MeshBasicMaterial({
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    });
+
+    this.hitbox = new THREE.Mesh(geometry, material);
+    this.hitbox.position.set(0, 1.2, 0);
+    this.hitbox.userData.instance = this;
+    this.mesh.add(this.hitbox);
+  }
 
   private createHealthBar() {
     const geometry = new THREE.PlaneGeometry(1, 0.12);
@@ -57,6 +78,8 @@ export class Enemy {
 
     this.healthBarBackground = new THREE.Mesh(geometry, bgMat);
     this.healthBarForeground = new THREE.Mesh(geometry, fgMat);
+    this.healthBarBackground.userData.instance = this;
+    this.healthBarForeground.userData.instance = this;
 
     // Position above the enemy head
     this.healthBarBackground.position.set(0, 2.2, 0);
@@ -111,6 +134,8 @@ export class Enemy {
     this.updateHealthBar(); 
     if (this.health <= 0) {
       this.die();
+    } else {
+      this.emitter.emit('target:hit', { position: this.position.clone() });
     }
   }
 
@@ -155,5 +180,9 @@ export class Enemy {
 
   destroy() {
     if (this.mesh) this.scene.remove(this.mesh);
+  }
+
+  getRaycastTargets(): THREE.Object3D[] {
+    return this.mesh && !this.isDead ? [this.mesh] : [];
   }
 }
