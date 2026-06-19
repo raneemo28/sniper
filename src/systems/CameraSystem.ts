@@ -1,8 +1,10 @@
 import * as THREE from 'three';
-import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { EventEmitter }  from '../utils/EventEmitter';
 import { CAMERA, PLAYER } from '../utils/constants';
 import { Player } from '../components/Player';
+
+type CameraMode = 'thirdPerson' | 'playerView' | 'orbit';
 
 export class CameraSystem {
   private camera: THREE.PerspectiveCamera;
@@ -12,15 +14,17 @@ export class CameraSystem {
   private pitch = 0;
 
   private isScoped    = false;
-  private targetFOV   = CAMERA.FOV_DEFAULT;
-  private currentFOV  = CAMERA.FOV_DEFAULT;
+  private targetFOV: number   = CAMERA.FOV_DEFAULT;
+  private currentFOV: number  = CAMERA.FOV_DEFAULT;
 
-  private orbitActive   = false;
+  private mode: CameraMode = 'thirdPerson';
   private orbitControls: OrbitControls | null = null;
+  private emitter: EventEmitter;
 
   constructor(camera: THREE.PerspectiveCamera, player: Player, emitter: EventEmitter) {
-    this.camera = camera;
+    this.camera = camera; 
     this.player = player;
+    this.emitter = emitter;
     this.subscribeToEvents(emitter);
   }
 
@@ -29,7 +33,8 @@ export class CameraSystem {
   }
 
   update(delta: number): void {
-    if (this.orbitActive) {
+    if (this.mode === 'orbit') {
+      this.setPlayerVisible(true);
       this.orbitControls?.update();
       return; 
     }
@@ -43,12 +48,12 @@ export class CameraSystem {
       this.camera.fov = this.currentFOV;
       this.camera.updateProjectionMatrix();
     }
+    
 
-    if (this.isScoped) {
-      // First-person view from the player's head when scoped in for sniper aiming
-      this.camera.position.copy(this.player.position).add(new THREE.Vector3(0, 1.7, 0));
-      this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+    if (this.mode === 'playerView' || this.isScoped) {
+      this.updatePlayerViewCamera();
     } else {
+      this.setPlayerVisible(true);
       // Third-person smooth follow camera centered around player
       const targetOffset = new THREE.Vector3(0, 2.0, 5.0); // 5m back, 2m high
       // Apply vertical tilt (pitch) and horizontal rotation (yaw) to the offset
@@ -71,9 +76,9 @@ export class CameraSystem {
 
   private subscribeToEvents(emitter: EventEmitter): void {
     emitter.on('input:mousemove', (dx: number, dy: number) => {
-      if (this.orbitActive) return;
+      if (this.mode === 'orbit') return;
 
-      const sens = this.isScoped
+      const sens = this.isScoped || this.mode === 'playerView'
         ? PLAYER.MOUSE_SENSITIVITY * 0.3  
         : PLAYER.MOUSE_SENSITIVITY;
 
@@ -81,10 +86,11 @@ export class CameraSystem {
       this.pitch -= dy * sens;
       
       // Clamp vertical pitch to prevent camera from flipping upside down
-      const limit = this.isScoped ? PLAYER.PITCH_LIMIT : 0.8;
+      const firstPerson = this.isScoped || this.mode === 'playerView';
+      const limit = firstPerson ? PLAYER.PITCH_LIMIT : 0.8;
       this.pitch  = THREE.MathUtils.clamp(
         this.pitch,
-        this.isScoped ? -PLAYER.PITCH_LIMIT : -0.4,
+        firstPerson ? -PLAYER.PITCH_LIMIT : -0.4,
         limit,
       );
     });
@@ -96,14 +102,36 @@ export class CameraSystem {
     });
 
     emitter.on('input:toggleOrbit', () => {
-      this.orbitActive = !this.orbitActive;
-
-      if (this.orbitActive) {
-        this.enableOrbit();
-      } else {
-        this.disableOrbit();
-      }
+      this.cycleViewMode();
     });
+  }
+
+  private updatePlayerViewCamera(): void {
+    this.setPlayerVisible(false);
+    this.camera.position.copy(this.player.position).add(new THREE.Vector3(0, PLAYER.HEIGHT, 0));
+    this.camera.rotation.set(this.pitch, this.yaw, 0, 'YXZ');
+  }
+
+  private cycleViewMode(): void {
+    if (this.mode === 'thirdPerson') {
+      this.mode = 'playerView';
+      this.disableOrbit();
+      this.emitViewMode();
+      return;
+    }
+
+    if (this.mode === 'playerView') {
+      this.mode = 'orbit';
+      this.setPlayerVisible(true);
+      this.enableOrbit();
+      this.emitViewMode();
+      return;
+    }
+
+    this.mode = 'thirdPerson';
+    this.disableOrbit();
+    this.setPlayerVisible(true);
+    this.emitViewMode();
   }
 
   private enableOrbit(): void {
@@ -127,5 +155,15 @@ export class CameraSystem {
     if (this.orbitControls) {
       this.orbitControls.enabled = false;
     }
+  }
+
+  private setPlayerVisible(visible: boolean): void {
+    if (this.player.mesh) {
+      this.player.mesh.visible = visible;
+    }
+  }
+
+  private emitViewMode(): void {
+    this.emitter.emit('camera:mode', this.mode);
   }
 }

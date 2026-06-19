@@ -5,6 +5,7 @@ import { Enemy }        from '../components/Enemy';
 
 const MAG_SIZE       = 5;
 const RELOAD_TIME_MS = 1800; 
+type CameraMode = 'thirdPerson' | 'playerView' | 'orbit';
 
 export class RaycastSystem {
   private camera:  THREE.PerspectiveCamera;
@@ -15,6 +16,7 @@ export class RaycastSystem {
   private shouldFire = false;
   private ammo      = MAG_SIZE;
   private reloading = false;
+  private cameraMode: CameraMode = 'thirdPerson';
   private reloadTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   constructor(camera: THREE.PerspectiveCamera, player: Player, emitter: EventEmitter) {
@@ -35,6 +37,10 @@ export class RaycastSystem {
     // Listen for manual reload command (R Key)
     this.emitter.on('input:reload', () => {
       this.startReload();
+    });
+
+    this.emitter.on('camera:mode', (mode: CameraMode) => {
+      this.cameraMode = mode;
     });
   }
 
@@ -71,8 +77,13 @@ export class RaycastSystem {
   private castRay(): void {
     const origin = this.player.getShootingOrigin();
 
-    // 1. Raycast from camera center to find what the player is looking at
-    this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+    if (this.cameraMode === 'playerView') {
+      // Player-eye view shoots exactly through the center of the camera.
+      this.raycaster.setFromCamera(new THREE.Vector2(0, 0), this.camera);
+    } else {
+      // Third-person and orbit views shoot from the character toward the face direction.
+      this.raycaster.set(origin, this.player.getFacingDirection());
+    }
     
     // We only want to check against Enemy meshes
     // In a real scenario, you'd pass a list of enemy meshes here
@@ -85,13 +96,13 @@ export class RaycastSystem {
         const hit = intersects[0];
         hitPoint = hit.point;
 
-        // Find the Enemy instance associated with this mesh
-        // This assumes enemies store their instance reference in userData
-        const enemyInstance = hit.object.userData.instance as Enemy;
+        const enemyInstance = this.findEnemyInstance(hit.object);
         
         if (enemyInstance) {
           enemyInstance.takeDamage(1); // Multi-hit logic
           this.emitter.emit('shot:hit');
+        } else {
+          this.emitter.emit('shot:miss');
         }
       } else {
         // If nothing hit, the tracer goes 100 units into the distance
@@ -107,6 +118,18 @@ export class RaycastSystem {
         color: 0x00ffff // Neon Cyan
       });
     });
+  }
+
+  private findEnemyInstance(object: THREE.Object3D): Enemy | null {
+    let current: THREE.Object3D | null = object;
+
+    while (current) {
+      const enemy = current.userData.instance as Enemy | undefined;
+      if (enemy) return enemy;
+      current = current.parent;
+    }
+
+    return null;
   }
 
   private pushAmmoUI(): void {

@@ -104,6 +104,6 @@ export class ScoreSystem {
 
   /** Tell UIScene to re-render the HUD with fresh numbers */
   private pushUI(): void {
-    this.emitter.emit('ui:scoreupdate', this.snapshot());
+    this.emitter.emit('ui:score', this.snapshot());
   }
 }

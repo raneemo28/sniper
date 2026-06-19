@@ -14,9 +14,11 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
-    "three": "^0.184.0"
+    "three": "^0.184.0",
+    "vir": "^0.6.0"
   },
   "devDependencies": {
-    "@types/three": "^0.184.1"
+    "@types/three": "^0.184.1",
+    "vite": "^8.0.16"
   }
 }
