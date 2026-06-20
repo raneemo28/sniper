@@ -86,10 +86,28 @@ export class Game {
     this.emitter.on('game:reset', () => {
       this.resetGame();
     });
+
+    // Menu Events
+    this.emitter.on('menu:start', () => {
+      this.resetGame();
+    });
+
+    this.emitter.on('settings:difficulty', (level: 'easy' | 'medium' | 'hard') => {
+      // @ts-ignore
+      this.waveSystem.setBaseDifficulty(level);
+    });
+
+    this.emitter.on('settings:appearance', (theme: 'dark' | 'light') => {
+      this.gameScene.setTheme(theme);
+    });
+
+    this.emitter.on('settings:audio', (enabled: boolean) => {
+      this.audioSystem.setMuted(!enabled);
+    });
   }
 
   start(): void {
-    this.emitter.emit('game:start');
+    this.uiScene.showMenu();
     this.renderer.setAnimationLoop(() => this.tick());
   }
 

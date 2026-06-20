@@ -5,6 +5,19 @@ export class GameScene {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
 
+  private materials = {
+    floor: new THREE.MeshStandardMaterial({ color: 0x2a2a38, roughness: 0.9 }),
+    wall: new THREE.MeshStandardMaterial({ color: 0x1e1e2a, roughness: 0.8 }),
+    building: new THREE.MeshStandardMaterial({ color: 0x14141e, roughness: 1 }),
+    window: new THREE.MeshStandardMaterial({ color: 0xffdd88, emissive: 0xffdd88, emissiveIntensity: 0.8 }),
+    pole: new THREE.MeshStandardMaterial({ color: 0x444455 }),
+    head: new THREE.MeshStandardMaterial({ color: 0xffeeaa, emissive: 0xffeeaa, emissiveIntensity: 1 }),
+  };
+
+  private ambientLight!: THREE.AmbientLight;
+  private moonLight!: THREE.DirectionalLight;
+  private pointLights: THREE.PointLight[] = [];
+
   constructor() {
     this.scene = new THREE.Scene();
     this.camera = new THREE.PerspectiveCamera(
@@ -36,18 +49,18 @@ export class GameScene {
   }
 
   private setupLighting(): void {
-    const ambient = new THREE.AmbientLight(0x111133, 0.6);
-    this.scene.add(ambient);
+    this.ambientLight = new THREE.AmbientLight(0x111133, 0.6);
+    this.scene.add(this.ambientLight);
 
-    const moon = new THREE.DirectionalLight(0x9999cc, 0.8);
-    moon.position.set(20, 40, 10);
-    moon.castShadow = true;
-    moon.shadow.mapSize.set(2048, 2048);
-    moon.shadow.camera.near = 0.5;
-    moon.shadow.camera.far = 120;
-    moon.shadow.camera.left = moon.shadow.camera.bottom = -30;
-    moon.shadow.camera.right = moon.shadow.camera.top = 30;
-    this.scene.add(moon);
+    this.moonLight = new THREE.DirectionalLight(0x9999cc, 0.8);
+    this.moonLight.position.set(20, 40, 10);
+    this.moonLight.castShadow = true;
+    this.moonLight.shadow.mapSize.set(2048, 2048);
+    this.moonLight.shadow.camera.near = 0.5;
+    this.moonLight.shadow.camera.far = 120;
+    this.moonLight.shadow.camera.left = this.moonLight.shadow.camera.bottom = -30;
+    this.moonLight.shadow.camera.right = this.moonLight.shadow.camera.top = 30;
+    this.scene.add(this.moonLight);
   }
 
   private buildRooftop(): void {
@@ -55,13 +68,13 @@ export class GameScene {
 
     const floor = new THREE.Mesh(
       new THREE.BoxGeometry(s, 0.3, s),
-      new THREE.MeshStandardMaterial({ color: 0x2a2a38, roughness: 0.9 }),
+      this.materials.floor,
     );
     floor.position.y = -0.15;
     floor.receiveShadow = true;
     this.scene.add(floor);
 
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x1e1e2a, roughness: 0.8 });
+    const wallMat = this.materials.wall;
     const wallH = 0.6;
     const wallT = 0.2;
     const wallConfigs: [number, number, number, number, number, number][] = [
@@ -79,7 +92,7 @@ export class GameScene {
   }
 
   private buildBuildings(): void {
-    const mat = new THREE.MeshStandardMaterial({ color: 0x14141e, roughness: 1 });
+    const mat = this.materials.building;
     const rng = ENVIRONMENT.ROOFTOP_SIZE;
 
     for (let i = 0; i < ENVIRONMENT.BUILDING_COUNT; i++) {
@@ -108,11 +121,7 @@ export class GameScene {
   }
 
   private addWindows(building: THREE.Mesh, w: number, h: number, d: number, side: number): void {
-    const windowMat = new THREE.MeshStandardMaterial({
-      color: 0xffdd88,
-      emissive: 0xffdd88,
-      emissiveIntensity: 0.8,
-    });
+    const windowMat = this.materials.window;
     const cols = Math.floor(w / 1.4);
     const rows = Math.floor(h / 2);
 
@@ -137,7 +146,7 @@ export class GameScene {
   private buildStreetLights(): void {
     const count = ENVIRONMENT.STREET_LIGHT_COUNT;
     const rng = ENVIRONMENT.ROOFTOP_SIZE;
-    const poleMat = new THREE.MeshStandardMaterial({ color: 0x444455 });
+    const poleMat = this.materials.pole;
 
     for (let i = 0; i < count; i++) {
       const angle = (i / count) * Math.PI * 2;
@@ -151,11 +160,7 @@ export class GameScene {
 
       const head = new THREE.Mesh(
         new THREE.SphereGeometry(0.15, 8, 8),
-        new THREE.MeshStandardMaterial({
-          color: 0xffeeaa,
-          emissive: 0xffeeaa,
-          emissiveIntensity: 1,
-        }),
+        this.materials.head,
       );
       head.position.set(x, 3.6, z);
       this.scene.add(head);
@@ -165,6 +170,7 @@ export class GameScene {
       light.castShadow = true;
       light.shadow.mapSize.set(256, 256);
       this.scene.add(light);
+      this.pointLights.push(light);
     }
   }
 
@@ -203,5 +209,45 @@ export class GameScene {
       }
     };
     requestAnimationFrame(tickFade);
+  }
+
+  setTheme(theme: 'dark' | 'light'): void {
+    if (theme === 'light') {
+      if (this.scene.fog) {
+        (this.scene.fog as THREE.Fog).color.setHex(0xcceeff);
+      }
+      this.scene.background = new THREE.Color(0xcceeff);
+      this.ambientLight.color.setHex(0xffffff);
+      this.ambientLight.intensity = 0.8;
+      
+      this.moonLight.color.setHex(0xffffff);
+      this.moonLight.intensity = 1.2;
+
+      this.materials.floor.color.setHex(0xaabbcc);
+      this.materials.wall.color.setHex(0x99aabb);
+      this.materials.building.color.setHex(0x8899aa);
+      
+      this.materials.window.emissiveIntensity = 0.2; // turn off windows during day
+      this.pointLights.forEach(l => l.intensity = 0.3); // dim streetlights
+      this.materials.head.emissiveIntensity = 0.2;
+    } else {
+      if (this.scene.fog) {
+        (this.scene.fog as THREE.Fog).color.setHex(0x0a0a14);
+      }
+      this.scene.background = new THREE.Color(0x0a0a14);
+      this.ambientLight.color.setHex(0x111133);
+      this.ambientLight.intensity = 0.6;
+      
+      this.moonLight.color.setHex(0x9999cc);
+      this.moonLight.intensity = 0.8;
+
+      this.materials.floor.color.setHex(0x2a2a38);
+      this.materials.wall.color.setHex(0x1e1e2a);
+      this.materials.building.color.setHex(0x14141e);
+      
+      this.materials.window.emissiveIntensity = 0.8; 
+      this.pointLights.forEach(l => l.intensity = 1.2); 
+      this.materials.head.emissiveIntensity = 1;
+    }
   }
 }

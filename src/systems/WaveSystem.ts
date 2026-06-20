@@ -15,14 +15,20 @@ export interface WaveConfig {
  * Generates wave difficulty. 
  * targetSpeed and targetHealth are passed to the Enemy class.
  */
-function buildWaveConfig(waveNumber: number): WaveConfig {
+export type DifficultyLevel = 'easy' | 'medium' | 'hard';
+
+function buildWaveConfig(waveNumber: number, difficultyLevel: DifficultyLevel): WaveConfig {
   const difficulty = Math.max(0, waveNumber - 1);
+
+  let baseHealth = 1;
+  if (difficultyLevel === 'medium') baseHealth = 2;
+  if (difficultyLevel === 'hard') baseHealth = 3;
 
   return {
     waveNumber,
     targetCount: 3 + difficulty * 2,
     targetSpeed: 1.8 + difficulty * 0.35,
-    targetHealth: 1 + Math.floor(difficulty / 3),
+    targetHealth: baseHealth + Math.floor(difficulty / 3),
     spawnIntervalMs: Math.max(550, 1800 - difficulty * 120),
     timeLimitSec: 50 + difficulty * 5,
   };
@@ -39,6 +45,7 @@ export class WaveSystem {
   private state: WaveState = 'idle';
   private currentWave = 0;
   private config: WaveConfig | null = null;
+  private baseDifficulty: DifficultyLevel = 'medium';
 
   private spawnQueue: number = 0;
   private spawnTimer: number = 0;
@@ -83,10 +90,14 @@ export class WaveSystem {
     });
   }
 
+  public setBaseDifficulty(level: DifficultyLevel): void {
+    this.baseDifficulty = level;
+  }
+
   public nextWave(): void {
     this.clearNextWaveTimeout();
     this.currentWave++;
-    this.config = buildWaveConfig(this.currentWave);
+    this.config = buildWaveConfig(this.currentWave, this.baseDifficulty);
     this.state = 'countdown';
     this.countdownTimer = 0;
     

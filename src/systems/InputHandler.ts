@@ -9,10 +9,23 @@ export class InputHandler {
   private mouseDeltaY  = 0;
 
   private keys: Record<string, boolean> = {};
+  private isMenuActive = true;
 
   constructor(emitter: EventEmitter) {
     this.emitter = emitter;
     this.bindEvents();
+    
+    this.emitter.on('game:start', () => {
+      this.isMenuActive = false;
+      document.body.requestPointerLock();
+    });
+
+    this.emitter.on('ui:gameover', () => {
+      this.isMenuActive = true;
+      if (document.pointerLockElement === document.body) {
+        document.exitPointerLock();
+      }
+    });
   }
 
   update(): void {
@@ -42,7 +55,7 @@ export class InputHandler {
   private bindEvents(): void {
     // Pointer Lock for FPS-style mouse control
     document.addEventListener('click', () => {
-      if (document.pointerLockElement !== document.body) {
+      if (!this.isMenuActive && document.pointerLockElement !== document.body) {
         document.body.requestPointerLock();
       }
     });

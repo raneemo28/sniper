@@ -17,6 +17,11 @@ export class UIScene {
   private elWaveTransition!: HTMLElement;
   private elHitFlash!:  HTMLElement;
   private elHealthBar!: HTMLElement; // Added for player health
+  
+  // Menus
+  private elStartMenu!: HTMLElement;
+  private elSettingsMenu!: HTMLElement;
+  private hudWrapper!: HTMLElement; // the main hud that should be hidden during menu
 
   constructor(emitter: EventEmitter) {
     this.emitter = emitter;
@@ -25,13 +30,19 @@ export class UIScene {
   }
 
   private buildHUD(): void {
-    const hud = this.createElement('div', 'hud', `
+    const root = this.createElement('div', 'root-ui', `
       position: fixed;
       inset: 0;
       pointer-events: none;
       font-family: 'Courier New', monospace;
       color: #eee;
       user-select: none;
+    `);
+
+    this.hudWrapper = this.createElement('div', 'hud-wrapper', `
+      position: absolute;
+      inset: 0;
+      display: none; /* hidden by default until game starts */
     `);
 
     // Top Left: Score and High Score
@@ -137,11 +148,132 @@ export class UIScene {
       text-shadow: 0 0 18px #00ffff;
     `);
 
-    hud.append(topLeft, topRight, healthContainer, bottomRight, this.elHitFlash, this.elCrosshair, this.elCountdown, this.elWaveTransition, this.elGameOver);
-    document.body.appendChild(hud);
+    this.hudWrapper.append(topLeft, topRight, healthContainer, bottomRight, this.elHitFlash, this.elCrosshair, this.elCountdown, this.elWaveTransition, this.elGameOver);
+
+    this.buildMenus();
+
+    root.append(this.hudWrapper, this.elStartMenu, this.elSettingsMenu);
+    document.body.appendChild(root);
+  }
+
+  private buildMenus(): void {
+    const menuStyle = `
+      position: absolute; inset: 0;
+      background: #000000;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      text-align: center; pointer-events: all;
+    `;
+    const btnStyle = `
+      margin: 10px; padding: 12px 40px; background: rgba(0,255,255,0.1); color: #00ffff;
+      border: 1px solid #00ffff; cursor: pointer; font-family: inherit;
+      font-size: 20px; transition: all 0.2s; font-weight: bold;
+    `;
+    const btnHover = `this.style.background='rgba(0,255,255,0.3)'; this.style.boxShadow='0 0 10px #00ffff';`;
+    const btnOut = `this.style.background='rgba(0,255,255,0.1)'; this.style.boxShadow='none';`;
+
+    // --- Start Menu ---
+    this.elStartMenu = this.createElement('div', 'start-menu', menuStyle);
+    this.elStartMenu.innerHTML = `
+      <h1 style="color:#00ffff; font-size:64px; margin-bottom:40px; text-shadow: 0 0 20px #00ffff; letter-spacing: 5px;">SNIPER</h1>
+      <button id="btn-start" style="${btnStyle}" onmouseover="${btnHover}" onmouseout="${btnOut}">START GAME</button>
+      <button id="btn-settings" style="${btnStyle}" onmouseover="${btnHover}" onmouseout="${btnOut}">SETTINGS</button>
+    `;
+
+    // --- Settings Menu ---
+    this.elSettingsMenu = this.createElement('div', 'settings-menu', menuStyle);
+    this.elSettingsMenu.style.display = 'none';
+    this.elSettingsMenu.innerHTML = `
+      <h2 style="color:#00ffff; font-size:48px; margin-bottom:40px;">SETTINGS</h2>
+      
+      <div style="margin-bottom: 20px; font-size: 24px; display: flex; align-items: center; gap: 20px;">
+        <span>Difficulty:</span>
+        <select id="select-difficulty" style="
+          padding: 8px 16px; background: rgba(0,0,0,0.5); color: #00ffff; 
+          border: 1px solid #00ffff; font-family: inherit; font-size: 20px; outline: none; cursor: pointer;
+        ">
+          <option value="easy">Easy</option>
+          <option value="medium" selected>Medium</option>
+          <option value="hard">Hard</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 20px; font-size: 24px; display: flex; align-items: center; gap: 20px;">
+        <span>Appearance:</span>
+        <select id="select-appearance" style="
+          padding: 8px 16px; background: rgba(0,0,0,0.5); color: #00ffff; 
+          border: 1px solid #00ffff; font-family: inherit; font-size: 20px; outline: none; cursor: pointer;
+        ">
+          <option value="dark" selected>Dark</option>
+          <option value="light">Light</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 40px; font-size: 24px; display: flex; align-items: center; gap: 20px;">
+        <span>Audio:</span>
+        <input type="checkbox" id="checkbox-audio" checked style="
+          width: 24px; height: 24px; cursor: pointer; accent-color: #00ffff;
+        ">
+      </div>
+
+      <button id="btn-settings-back" style="${btnStyle}" onmouseover="${btnHover}" onmouseout="${btnOut}">BACK</button>
+    `;
+
+    // Event Listeners (Use setTimeout to ensure elements exist in DOM or attach immediately to the created elements)
+    // Actually, innerHTML creates the elements, but we need to wait until they are mounted or query them from the parent.
+    // They are not in the document yet, but we can query them from this.elStartMenu
+  }
+
+  private setupMenuListeners(): void {
+    // Start Menu
+    const btnStart = this.elStartMenu.querySelector('#btn-start') as HTMLButtonElement;
+    const btnSettings = this.elStartMenu.querySelector('#btn-settings') as HTMLButtonElement;
+
+    btnStart.addEventListener('click', () => {
+      this.elStartMenu.style.display = 'none';
+      this.hudWrapper.style.display = 'block';
+      this.emitter.emit('menu:start');
+    });
+
+    btnSettings.addEventListener('click', () => {
+      this.elStartMenu.style.display = 'none';
+      this.elSettingsMenu.style.display = 'flex';
+    });
+
+    // Settings Menu
+    const btnBack = this.elSettingsMenu.querySelector('#btn-settings-back') as HTMLButtonElement;
+    const selectDiff = this.elSettingsMenu.querySelector('#select-difficulty') as HTMLSelectElement;
+    const selectApp = this.elSettingsMenu.querySelector('#select-appearance') as HTMLSelectElement;
+    const checkAudio = this.elSettingsMenu.querySelector('#checkbox-audio') as HTMLInputElement;
+
+    btnBack.addEventListener('click', () => {
+      this.elSettingsMenu.style.display = 'none';
+      this.elStartMenu.style.display = 'flex';
+    });
+
+    selectDiff.addEventListener('change', () => {
+      this.emitter.emit('settings:difficulty', selectDiff.value);
+    });
+
+    selectApp.addEventListener('change', () => {
+      this.emitter.emit('settings:appearance', selectApp.value);
+    });
+
+    checkAudio.addEventListener('change', () => {
+      this.emitter.emit('settings:audio', checkAudio.checked);
+    });
+  }
+
+  public showMenu(): void {
+    this.hudWrapper.style.display = 'none';
+    this.elStartMenu.style.display = 'flex';
+    this.elSettingsMenu.style.display = 'none';
   }
 
   private subscribeToEvents(): void {
+    // Make sure menu listeners are attached after elements are created
+    // We can do it here because buildHUD() is called before subscribeToEvents()
+    this.setupMenuListeners();
 
     this.emitter.on('ui:health', (data: { current: number, max: number }) => {
     const percent = (data.current / data.max) * 100;
