@@ -84,6 +84,9 @@ export class Game {
         this.emitter.on('settings:audio', (enabled) => {
             this.audioSystem.setMuted(!enabled);
         });
+        this.emitter.on('settings:playerModel', (modelFile) => {
+            this.player.setModel(modelFile);
+        });
     }
     start() {
         this.uiScene.showMenu();
