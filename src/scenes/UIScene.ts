@@ -183,6 +183,9 @@ export class UIScene {
     // --- Settings Menu ---
     this.elSettingsMenu = this.createElement('div', 'settings-menu', menuStyle);
     this.elSettingsMenu.style.display = 'none';
+
+    const savedModel = localStorage.getItem('settings:playerModel') || 'CesiumMan.glb';
+
     this.elSettingsMenu.innerHTML = `
       <h2 style="color:#00ffff; font-size:48px; margin-bottom:40px;">SETTINGS</h2>
       
@@ -209,11 +212,22 @@ export class UIScene {
         </select>
       </div>
 
-      <div style="margin-bottom: 40px; font-size: 24px; display: flex; align-items: center; gap: 20px;">
+      <div style="margin-bottom: 20px; font-size: 24px; display: flex; align-items: center; gap: 20px;">
         <span>Audio:</span>
         <input type="checkbox" id="checkbox-audio" checked style="
           width: 24px; height: 24px; cursor: pointer; accent-color: #00ffff;
         ">
+      </div>
+
+      <div style="margin-bottom: 40px; font-size: 24px; display: flex; align-items: center; gap: 20px;">
+        <span>Player Model:</span>
+        <select id="select-player-model" style="
+          padding: 8px 16px; background: rgba(0,0,0,0.5); color: #00ffff;
+          border: 1px solid #00ffff; font-family: inherit; font-size: 20px; outline: none; cursor: pointer;
+        ">
+          <option value="CesiumMan.glb"           ${savedModel === 'CesiumMan.glb'           ? 'selected' : ''}>Cesium Man</option>
+          <option value="pixellabs-robot-3332.glb" ${savedModel === 'pixellabs-robot-3332.glb' ? 'selected' : ''}>Robot</option>
+        </select>
       </div>
 
       <button id="btn-settings-back" style="${btnStyle}" onmouseover="${btnHover}" onmouseout="${btnOut}">BACK</button>
@@ -241,10 +255,11 @@ export class UIScene {
     });
 
     // Settings Menu
-    const btnBack = this.elSettingsMenu.querySelector('#btn-settings-back') as HTMLButtonElement;
-    const selectDiff = this.elSettingsMenu.querySelector('#select-difficulty') as HTMLSelectElement;
-    const selectApp = this.elSettingsMenu.querySelector('#select-appearance') as HTMLSelectElement;
-    const checkAudio = this.elSettingsMenu.querySelector('#checkbox-audio') as HTMLInputElement;
+    const btnBack       = this.elSettingsMenu.querySelector('#btn-settings-back')   as HTMLButtonElement;
+    const selectDiff    = this.elSettingsMenu.querySelector('#select-difficulty')    as HTMLSelectElement;
+    const selectApp     = this.elSettingsMenu.querySelector('#select-appearance')    as HTMLSelectElement;
+    const checkAudio    = this.elSettingsMenu.querySelector('#checkbox-audio')       as HTMLInputElement;
+    const selectModel   = this.elSettingsMenu.querySelector('#select-player-model')  as HTMLSelectElement;
 
     btnBack.addEventListener('click', () => {
       this.elSettingsMenu.style.display = 'none';
@@ -261,6 +276,12 @@ export class UIScene {
 
     checkAudio.addEventListener('change', () => {
       this.emitter.emit('settings:audio', checkAudio.checked);
+    });
+
+    selectModel.addEventListener('change', () => {
+      const modelFile = selectModel.value;
+      localStorage.setItem('settings:playerModel', modelFile);
+      this.emitter.emit('settings:playerModel', modelFile);
     });
   }
 

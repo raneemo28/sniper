@@ -23,7 +23,10 @@ export class Player {
   constructor(scene: THREE.Scene, emitter: EventEmitter) {
     this.scene = scene;
     this.emitter = emitter;
-    this.loadModel();
+
+    // Load the model saved in settings (defaults to CesiumMan.glb)
+    const savedModel = localStorage.getItem('settings:playerModel') || 'CesiumMan.glb';
+    this.loadModel(savedModel);
     
     // Subscribe to keyboard inputs from the InputHandler
     this.emitter.on('input:keys', (keys: Record<string, boolean>) => {
@@ -31,43 +34,64 @@ export class Player {
     });
   }
 
-  private loadModel(): void {
+  private loadModel(modelFile = 'CesiumMan.glb'): void {
+    const path = `/src/models/${modelFile}`;
+
+    const onLoaded = (group: THREE.Group, animations: THREE.AnimationClip[]) => {
+      this.mesh = group;
+      this.mesh.scale.set(this.scale, this.scale, this.scale);
+      this.mesh.position.copy(this.position);
+      
+      // Enable shadows for the character
+      this.mesh.traverse((child) => {
+        if ((child as THREE.Mesh).isMesh) {
+          child.castShadow = true;
+          child.receiveShadow = true;
+        }
+      });
+
+      // Rotate the model by 180 degrees initially so he faces forward
+      this.mesh.rotation.y = Math.PI;
+
+      this.scene.add(this.mesh);
+      console.log('[Player] Loaded animations:', animations);
+
+      // Setup walking animations using the mixer
+      if (animations && animations.length > 0) {
+        this.mixer = new THREE.AnimationMixer(this.mesh);
+        this.walkAction = this.mixer.clipAction(animations[0]);
+        this.walkAction.timeScale = 1.35;
+        this.walkAction.play();
+        this.walkAction.paused = true; // Start in standing/idle state
+      }
+    };
+
     const loader = new GLTFLoader();
     loader.load(
-      '/src/models/CesiumMan.glb',
-      (gltf) => {
-        this.mesh = gltf.scene;
-        this.mesh.scale.set(this.scale, this.scale, this.scale);
-        this.mesh.position.copy(this.position);
-        
-        // Enable shadows for the character
-        this.mesh.traverse((child) => {
-          if ((child as THREE.Mesh).isMesh) {
-            child.castShadow = true;
-            child.receiveShadow = true;
-          }
-        });
-
-        // Rotate the model by 180 degrees initially so he faces forward
-        this.mesh.rotation.y = Math.PI;
-
-        this.scene.add(this.mesh);
-        console.log('[Player] Loaded animations:', gltf.animations);
-
-        // Setup walking animations using the mixer
-        if (gltf.animations && gltf.animations.length > 0) {
-          this.mixer = new THREE.AnimationMixer(this.mesh);
-          this.walkAction = this.mixer.clipAction(gltf.animations[0]);
-          this.walkAction.timeScale = 1.35;
-          this.walkAction.play();
-          this.walkAction.paused = true; // Start in standing/idle state
-        }
-      },
+      path,
+      (gltf) => onLoaded(gltf.scene, gltf.animations),
       undefined,
-      (error) => {
-        console.error('[Player] Failed to load model:', error);
-      }
+      (error) => console.error('[Player] Failed to load GLTF model:', error)
     );
+  }
+
+  /** Called when the player picks a new model from Settings. */
+  public setModel(modelFile: string): void {
+    // Tear down existing mesh & mixer
+    if (this.walkAction) {
+      this.walkAction.stop();
+      this.walkAction = null;
+    }
+    if (this.mixer) {
+      this.mixer.stopAllAction();
+      this.mixer = null;
+    }
+    if (this.mesh) {
+      this.scene.remove(this.mesh);
+      this.mesh = null;
+    }
+
+    this.loadModel(modelFile);
   }
 
   update(delta: number, cameraYaw: number): void {

@@ -104,6 +104,10 @@ export class Game {
     this.emitter.on('settings:audio', (enabled: boolean) => {
       this.audioSystem.setMuted(!enabled);
     });
+
+    this.emitter.on('settings:playerModel', (modelFile: string) => {
+      this.player.setModel(modelFile);
+    });
   }
 
   start(): void {
